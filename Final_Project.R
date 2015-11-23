@@ -1,6 +1,7 @@
 library(R.matlab)
 library(stats)
 library(gtools)
+library(randomForest)
 
 ######################################## FUNCTIONS #######################################
 
@@ -20,7 +21,7 @@ extractFeats = function(data)
   norm_data = data.frame((data-rowMeans(data))/apply(data,1,sd))
   
   # calculate time frequency correlation matrix
-  corr_matrix = cor(t(norm_data))
+  corr_matrix = cor(norm_data)
   
   # sorted eigen values
   eigen_values = eigen(corr_matrix)$values
@@ -32,15 +33,14 @@ extractFeats = function(data)
   # fft magnitudes of 1-47Hz
   fdata = abs(fft(data))
   fdata = fdata + 2e-13
-  fdata = log10(t(fdata[,1:47]))
-  
-  # normalize by frequency bin
-  ddata = data.frame((fdata-rowMeans(fdata))/apply(fdata,1,sd))
-  fdata = t(ddata)
+  fdata = log10(fdata[1:47,])
   logdata = as.vector(fdata)
   
+  # normalize by frequency bin
+  ddata = ((fdata-rowMeans(fdata))/apply(fdata,1,sd))
+  
   # calculate time frequency correlation matrix
-  fcorr_matrix = cor(t(fdata))
+  fcorr_matrix = cor(fdata)
   
   # sorted eigen values
   feigen_values = eigen(fcorr_matrix)$values
@@ -49,7 +49,7 @@ extractFeats = function(data)
   fuppr_right = fcorr_matrix[upper.tri(fcorr_matrix,diag = FALSE)]
   
   # concatenate features into a vector
-  feature_vec = t(c(eigen_values,feigen_values,logdata,uppr_right,fuppr_right))
+  feature_vec = c(eigen_values,feigen_values,logdata,uppr_right,fuppr_right)
   
 }
 
@@ -63,8 +63,8 @@ extractFeats = function(data)
 subjects = c('Dog_1','Dog_2','Dog_3','Dog_4')
 
 ## Process subjects
-for i in 1:length(subjects){
-  
+for (i in 1:length(subjects)){
+  print(i)
   # ictal clip paths
   clips.ictal = list.files(paste('Documents/Volumes/Seagate/seizure_detection/competition_data/clips/',subjects[i],sep = ''), pattern="*ictal*", full.names=TRUE)
   clips.ictal = clips.ictal[mixedorder(clips.ictal)]
@@ -78,7 +78,7 @@ for i in 1:length(subjects){
   clips.test = clips.test[mixedorder(clips.test)]
   
   ## process ictal clips
-  for ict in 1:length(clips.ictal){
+  for (ict in 1:length(clips.ictal)){
     
     # load clip
     clip = loadMat(clips.ictal[ict])
@@ -87,16 +87,17 @@ for i in 1:length(subjects){
     data = matrix(unlist(clip$data),round(as.numeric(clip$freq)), byrow = TRUE)
     
     # extract features and create feature matrix
-    if ict == 1{
-      ictal_feats = data.frame(extract_feats(data))
+    if (ict == 1){
+      ictal_feats = extractFeats(data)
     } else {
-    ictal_feats = rbind(ictal_feats,extract_feats(data))
+    ictal_feats = rbind(ictal_feats,extractFeats(data))
     }
    
   }
+  print('ictal clips done!')
   
   ## process interictal clips
-  for intict in 1:length(clips.interictal){
+  for (intict in 1:length(clips.interictal)){
     
     # load clip
     clip = loadMat(clips.interictal[intict])
@@ -105,17 +106,17 @@ for i in 1:length(subjects){
     data = matrix(unlist(clip$data),round(as.numeric(clip$freq)), byrow = TRUE)
     
     # extract features and create feature matrix
-    if intict == 1{
-      interictal_feats = data.frame(extract_feats(data))
+    if (intict == 1){
+      interictal_feats = extractFeats(data)
     } else {
-      interictal_feats = rbind(interictal_feats,extract_feats(data))
+      interictal_feats = rbind(interictal_feats,extractFeats(data))
     }
     
   }
   
+  print('interictal clips done!')
   ## process test clips
-  for tes in 1:length(clips.test){
-    
+  for (tes in 1:length(clips.test)){
     # load clip
     clip = loadMat(clips.test[tes])
     
@@ -123,29 +124,56 @@ for i in 1:length(subjects){
     data = matrix(unlist(clip$data),round(as.numeric(clip$freq)), byrow = TRUE)
     
     # extract features and create feature matrix
-    if tes == 1{
-      test_feats = data.frame(extract_feats(data))
+    if (tes == 1){
+      test_feats = extractFeats(data)
     } else {
-      test_feats = rbind(test_feats,extract_feats(data))
+      test_feats = rbind(test_feats,extractFeats(data))
     }
     
   }
-  
+  print('test clips done!')
   ## store feature matrices in list of subjects
-  if i == 1 {
+  if (i == 1) {
     features.ictal = list(ictal_feats)
     features.interictal = list(interictal_feats)
     features.test = list(test_feats)
   } else {
-    features.ictal = c(features.ictal,ictal_feats)
-    features.interictal = c(features.interictal,interictal_feats)
-    features.test = c(features.test,test_feats)
+    features.ictal[[i]] = ictal_feats
+    features.interictal[[i]] = interictal_feats
+    features.test[[i]] = test_feats
   }
-  
+  print('features stored!')
 }
 
+
+
+# import test labels
+
+
 ########################## SEIZURE DETECTION ALGORITHMS/SUBJECT ##########################
+# random forest
+pred.rf = list()
+for (i in 1:length(subjects)){
+  print('')
+  
+  # Make labels
+  labels.ictal = rep(1,dim(features.ictal[[i]])[1])
+  labels.interictal = rep(0,dim(features.interictal[[i]])[1])
+  
+  # random forest
+  detector.rf = randomForest(rbind(features.ictal[[i]],features.interictal[[i]]),factor(c(labels.ictal,labels.interictal)),ntree=100,importance=TRUE) 
+  
+  # make predictions
+  pred.rf[[i]] = predict(detector.rf,features.test[[i]], type="prob")
+}
 
+# svm
+pred.svm = list()
 
+library(e1071)
 
+# train
+detector.svm = svm(rbind(features.ictal[[i]],features.interictal[[i]]),factor(c(labels.ictal,labels.interictal)), scale = TRUE, kernel = "radial")
 
+# test
+pred.svm = fitted(detector.svm)
