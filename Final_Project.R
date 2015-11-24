@@ -176,4 +176,4 @@ library(e1071)
 detector.svm = svm(rbind(features.ictal[[i]],features.interictal[[i]]),factor(c(labels.ictal,labels.interictal)), scale = TRUE, kernel = "radial")
 
 # test
-pred.svm = fitted(detector.svm)
+pred.svm = predict(detector.svm,features.test[[i]], type="prob")
