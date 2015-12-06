@@ -3,6 +3,7 @@ library(stats)
 library(gtools)
 library(randomForest)
 library(e1071)
+library(ggplot2)
 ######################################## FUNCTIONS #######################################
 
 ## Function to load .mat files into R
