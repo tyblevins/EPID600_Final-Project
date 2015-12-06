@@ -13,9 +13,19 @@ Sample code and data is provided to evaluate one subject in the study. Please us
 3. The following features are extracted:
   - electrode channel correlations
   - correlation eigenvalues
+  - energy
   - log10 magnitudes of frequencies in the range of 1-47Hz
   - frequency correlations
   - frequency correlation eigenvalues
 4. Subject feature matrices are processed by seizure detector (classification algorithm)
   - Random Forest Classifier
 5. Algorithms are evaluated using ROC and AUC metrics.
+
+## Feature Visualizations
+1. Time Domain
+![energy and correlations](https://raw.github.com/tyblevins/EPID600_Final-Project/master/pics/time_feats.png)
+2. Frequency Domain
+![eigenvalues and frequency correlations](https://raw.github.com/tyblevins/EPID600_Final-Project/master/pics/freq_feats.png)
+
+## Results - Model Performance
+![ROC curves](https://raw.github.com/tyblevins/EPID600_Final-Project/master/pics/results.png)
