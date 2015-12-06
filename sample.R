@@ -18,7 +18,7 @@ extractFeats = function(data)
 {
   
   # normalize channels
-  norm_data = data.frame((data-rowMeans(data))/apply(data,1,sd))
+  norm_data = data.frame((data-colMeans(data))/apply(data,2,sd))
   
   # calculate time frequency correlation matrix
   corr_matrix = cor(norm_data)
@@ -176,3 +176,6 @@ detector.svm = svm(rbind(features.ictal[[i]],features.interictal[[i]]),factor(c(
 
 # test
 pred.svm = predict(detector.svm,features.test[[i]], type="prob")
+
+
+
