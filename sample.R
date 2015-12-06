@@ -70,15 +70,15 @@ subjects = c('Dog_1')
 for (i in 1:length(subjects)){
   print(i)
   # ictal clip paths
-  clips.ictal = list.files(paste('Documents/Volumes/Seagate/seizure_detection/competition_data/clips/',subjects[i],sep = ''), pattern="*_ictal_*", full.names=TRUE)
+  clips.ictal = list.files(paste('./data/',subjects[i],sep = ''), pattern="*_ictal_*", full.names=TRUE)
   clips.ictal = clips.ictal[mixedorder(clips.ictal)]
   
   # interictal clip paths
-  clips.interictal = list.files(paste('Documents/Volumes/Seagate/seizure_detection/competition_data/clips/',subjects[i],sep = ''), pattern="*_interictal_*", full.names=TRUE)
+  clips.interictal = list.files(paste('./data/',subjects[i],sep = ''), pattern="*_interictal_*", full.names=TRUE)
   clips.interictal = clips.interictal[mixedorder(clips.interictal)]
   
   # test clip paths
-  clips.test = list.files(paste('Documents/Volumes/Seagate/seizure_detection/competition_data/clips/',subjects[i],sep = ''), pattern="*_test_*", full.names=TRUE)
+  clips.test = list.files(paste('./data',subjects[i],sep = ''), pattern="*_test_*", full.names=TRUE)
   clips.test = clips.test[mixedorder(clips.test)]
   
   ## process ictal clips
