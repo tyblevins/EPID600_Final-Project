@@ -2,7 +2,7 @@
 ### Tyler Blevins
 
 ## Project Description
-EEG from four canine subjects was analyzed. The EEG data is publicly available (and nicely packaged/organized) on Kaggle.com as part of the Seizure Detection challenge. The data was clipped into 1 second segments and classified as 'Ictal' or Interictal'. Features derived from the literature will be extracted from the clips, analyzed for importance, and ran through a seizure detection algorithm. The performance of the algorithm was evaluated by ROC and AUC metrics.
+EEG from four canine subjects was analyzed. The EEG data is publicly available (and nicely packaged/organized) on Kaggle.com as part of the Seizure Detection challenge. The data was clipped into 1 second segments and classified as 'Ictal' (seizure) or 'Interictal' (between seizure). Features derived from the literature will be extracted from the clips, analyzed for importance, and ran through a seizure detection algorithm. The performance of the algorithm was evaluated by ROC and AUC metrics.
 
 ## Directory Information
 `data` contains the training and testing data for only Dog 1 in the study. This is for use with the sample code. The data for Dogs 2-4 can be found on [Kaggle](https://www.kaggle.com/c/seizure-detection/data). Download the clips.tar file and unzip. Please be aware that the clips.tar file is ~50GB uncompressed.
