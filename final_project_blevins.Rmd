@@ -1,0 +1,377 @@
+---
+title: "EPID 600 Project: Seizure Detection"
+author: "Tyler Blevins"
+output: html_document
+---
+
+### Overview
+
+For my project, I will be building a seizure detection algorithm that will classify 1-second clips of EEG data as seizure or non-seizure. I will be extracting features from the EEG data, constructing a feature set, and training an algorithm. The goal is to see if I can improve upon existing algorithms and validate its performance on new datasets. I will be using data from ieeg.org. This data is publicly available to anyone who creates an account. For simplicity, I used data that was already clipped up and organized into .mat files from the Kaggle Seizure Detection competition.
+
+I have spoken to Dr. Lyle Ungar from the CIS department. Because seizures are few and far between, I will have many more observations of non-seizure EEG than seizure EEG, resulting in an unbalanced training set. This is detrimental to algorithm performance. I asked Dr. Ungar how to correct for this. He offered several solutions, such as creating extra copies of the seizure observations in combination with an SVM classifier. He also recommended that I create my own SVM code so that my algorithm optimizes the first part of the ROC curve.
+
+I spoke with Dr. Joost Wagenaar in the CNT. He suggested that I try combining a few of the existing algorithms to try and improve performance. He also thought it might be interesting to explore some lesser known/used features of EEG data.
+
+Lastly, I talked with Dr. Brian Litt in the Bioengineering department briefly about Epilepsy. We discussed the field and what is currently being done.
+
+### Introduction 
+
+Epilepsy is a neurological disorder that affects more than 60 million people worldwide, or approximately 1% of the population.  In 37% of epilepsy patients, seizure generation is resistant to medication [French 2007]. For some drug-resistant patients, resective surgery to remove seizure-generating regions is an option. However, post-resection outcome is modest, ~40% seizure-free in patients without focal lesions and 65% in well localized patients.  The need for novel, more effective therapies is clear. A recent innovation in the treatment of drug-resistant epilepsy is chronic, implantable devices that stimulate brain networks in response to epileptic events. These devices abort seizure activity by detecting seizure-generation and delivering electrical stimulation to network targets, reducing monthly seizure rates by as much as 41.5% [Lega 2010][ DeGiorgio 2013]. The success of implantable devices hinges on algorithms that detect seizure-generation, such as the one I will be developing in this project.
+
+This is an interdisciplinary problem that pulls from the fields of neuroscience, signal processing, computer science, and data science. Neuroscience provides us with the knowledge of what is physiologically happening during a seizure as well as what defines a seizure. We can then leverage methods developed from signal processing and computer science to extract and process information from the brain before implementing a machine learning algorithm to detect seizure generation. Machine learning techniques are especially important here, where specific algorithms are more suited to data with a class imbalance as seen in this problem when seizures are few and far between. Finally, EEG recordings produce massive amounts of data that needs to be handled efficiently. Data science gives us the tools to organize and analyze this data. 
+
+### Methods
+In the first paragraph, describe the data used and general methodological approach. Subsequently, incorporate full R code necessary to retrieve and clean data, and perform analysis. Be sure to include a description of code so that others (including your future self) can understand what you are doing and why.
+
+Four intracranial EEG data sets hosted on the ieeg.org portal were selected for use in my study. These data sets were recorded from dogs with naturally occurring epilepsy using an ambulatory monitoring system. EEG from the dogs was acquired from an implanted device with a sampling rate of 400Hz from 16 subdural electrodes arranged on two 4-contact strips implanted on each hemisphere in an antero-posterior position.  
+
+To prepare the data for use in the study, data sets were split into a training set and a testing set. Testing and training data were organized into one-second clips where training data clips were labeled ‘ictal’ for the seizure data segments or ‘inter-ictal’ for non-seizure data segments and testing clips remained unlabeled.  Training data clips were arranged sequentially, while testing data clips were in random order.  Ictal segments cover the entire seizure and inter-ictal segments cover approximately the mean of seizure duration. Inter-ictal segments were chosen randomly under the provision that they were not within one hour before or after a seizure.
+
+Features were extracted from each clip. These features include the log10 magnitude of the frequencies, correlation coefficients between channels, and their corresponding sorted eigenvalues in both the time and frequency domains. These features are ran through a random forest classifier so that each clip may be labeled ictal or interictal.
+
+
+```{r eval=FALSE}
+library(R.matlab)
+library(stats)
+library(gtools)
+library(randomForest)
+library(e1071)
+library(ggplot2)
+######################################## FUNCTIONS #######################################
+
+## Function to load .mat files into R
+loadMat = function(fileName)
+{
+  # Load in mat file and read the fields into variables
+  rawData = readMat(fileName)
+  out = list(data=rawData['data'],freq = rawData['freq'],latency = rawData['latency'])
+}
+
+## function to extract features from EEG data
+extractFeats = function(data)
+{
+  
+  # calculate energy
+  energy = log10(colSums(data*data)/dim(data)[1])
+  
+  # normalize channels
+  norm_data = data.frame(data-matrix(rep(colMeans(data),400),ncol=16,byrow=TRUE)/matrix(rep(apply(data,2,sd),400),ncol=16,byrow=TRUE))
+  
+  # calculate time frequency correlation matrix
+  corr_matrix = cor(norm_data)
+  
+  # sorted eigen values
+  eigen_values = eigen(corr_matrix)$values
+  
+  # upper right triangular to eliminate redundant features
+  uppr_right = corr_matrix[upper.tri(corr_matrix,diag = FALSE)]
+  
+  # Frequency Domain
+  # fft magnitudes of 1-47Hz
+  fdata = abs(fft(data))
+  fdata = fdata + 2e-13
+  fdata = log10(fdata[2:48,])
+  logdata = as.vector(fdata)
+  
+  # normalize by frequency bin
+  ddata = ((fdata-matrix(rep(rowMeans(fdata),16),nrow=47,byrow=FALSE))/matrix(rep(apply(fdata,1,sd),16),nrow=47,byrow=FALSE))
+  
+  # calculate time frequency correlation matrix
+  fcorr_matrix = cor(fdata)
+  
+  # sorted eigen values
+  feigen_values = eigen(fcorr_matrix)$values
+  
+  # upper right triangular to eliminate redundant features
+  fuppr_right = fcorr_matrix[upper.tri(fcorr_matrix,diag = FALSE)]
+  
+  # concatenate features into a vector
+  feature_vec = c(eigen_values,feigen_values,logdata,uppr_right,fuppr_right,energy)
+  
+}
+
+# clip dimensions
+#size = as.data.frame(lapply(clip$data, dim))
+
+
+#################################### PROCESS SUBJECTS ####################################
+
+### Subjects in study
+subjects = c('Dog_1','Dog_2','Dog_3','Dog_4')
+
+## Process subjects
+for (i in 1:length(subjects)){
+  print(i)
+  # ictal clip paths
+  clips.ictal = list.files(paste('Documents/Volumes/Seagate/seizure_detection/competition_data/clips/',subjects[i],sep = ''), pattern="*_ictal_*", full.names=TRUE)
+  clips.ictal = clips.ictal[mixedorder(clips.ictal)]
+  
+  # interictal clip paths
+  clips.interictal = list.files(paste('Documents/Volumes/Seagate/seizure_detection/competition_data/clips/',subjects[i],sep = ''), pattern="*_interictal_*", full.names=TRUE)
+  clips.interictal = clips.interictal[mixedorder(clips.interictal)]
+  
+  # test clip paths
+  clips.test = list.files(paste('Documents/Volumes/Seagate/seizure_detection/competition_data/clips/',subjects[i],sep = ''), pattern="*_test_*", full.names=TRUE)
+  clips.test = clips.test[mixedorder(clips.test)]
+  
+  ## process ictal clips
+  for (ict in 1:length(clips.ictal)){
+    
+    # load clip
+    clip = loadMat(clips.ictal[ict])
+  
+    # convert to matrix
+    data = matrix(unlist(clip$data),round(as.numeric(clip$freq)), byrow = TRUE)
+    
+    # extract features and create feature matrix
+    if (ict == 1){
+      ictal_feats = extractFeats(data)
+    } else {
+    ictal_feats = rbind(ictal_feats,extractFeats(data))
+    }
+   
+  }
+  print('ictal clips done!')
+  
+  ## process interictal clips
+  for (intict in 1:length(clips.interictal)){
+    
+    # load clip
+    clip = loadMat(clips.interictal[intict])
+    
+    # convert to matrix
+    data = matrix(unlist(clip$data),round(as.numeric(clip$freq)), byrow = TRUE)
+    
+    # extract features and create feature matrix
+    if (intict == 1){
+      interictal_feats = extractFeats(data)
+    } else {
+      interictal_feats = rbind(interictal_feats,extractFeats(data))
+    }
+    
+  }
+  
+  print('interictal clips done!')
+  ## process test clips
+  for (tes in 1:length(clips.test)){
+    # load clip
+    clip = loadMat(clips.test[tes])
+    
+    # convert to matrix
+    data = matrix(unlist(clip$data),round(as.numeric(clip$freq)), byrow = TRUE)
+    
+    # extract features and create feature matrix
+    if (tes == 1){
+      test_feats = extractFeats(data)
+    } else {
+      test_feats = rbind(test_feats,extractFeats(data))
+    }
+    
+  }
+  print('test clips done!')
+  ## store feature matrices in list of subjects
+  if (i == 1) {
+    features.ictal = list(ictal_feats)
+    features.interictal = list(interictal_feats)
+    features.test = list(test_feats)
+  } else {
+    features.ictal[[i]] = ictal_feats
+    features.interictal[[i]] = interictal_feats
+    features.test[[i]] = test_feats
+  }
+  print('features stored!')
+}
+
+
+
+# import test labels
+true_labels = read.csv("Documents/Github/revised_solution.csv")
+dog1_tlabels = true_labels[1:3181,2]
+dog1_tlabels[dog1_tlabels==-1] = 0
+dog2_tlabels = true_labels[3182:6178,2]
+dog2_tlabels[dog2_tlabels==-1] = 0
+dog3_tlabels = true_labels[6179:10628,2]
+dog3_tlabels[dog3_tlabels==-1] = 0
+dog4_tlabels = true_labels[10629:13641,2]
+dog4_tlabels[dog4_tlabels==-1] = 0
+
+dog_labels = list(dog1_tlabels,dog2_tlabels,dog3_tlabels,dog4_tlabels)
+
+########################## SEIZURE DETECTION ALGORITHMS/SUBJECT ##########################
+
+
+# Random forest classifier to predict test set labels
+pred.rf = list()
+for (i in 1:length(subjects)){
+  print(i)
+  
+  # Make labels
+  labels.ictal = rep(1,dim(features.ictal[[i]])[1])
+  labels.interictal = rep(0,dim(features.interictal[[i]])[1])
+  
+  # random forest
+  detector.rf = randomForest(rbind(features.ictal[[i]],features.interictal[[i]]),factor(c(labels.ictal,labels.interictal)),ntree=1000,importance=TRUE,mtry=1) 
+  
+  # make predictions
+  pred.rf[[i]] = predict(detector.rf,features.test[[i]], type="prob")
+}
+
+# sample for SVM classifier
+# train
+detector.svm = svm(rbind(features.ictal[[i]],features.interictal[[i]]),factor(c(labels.ictal,labels.interictal)), scale = TRUE, kernel = "radial")
+
+# test
+pred.svm = predict(detector.svm,features.test[[i]], type="prob")
+
+# heatmap of correlations
+heat.ictal = features.ictal[[1]][,785:904]
+heat.interictal = features.interictal[[1]][,785:904]
+k = rbind(heat.interictal,heat.ictal)
+
+heat.if = features.ictal[[1]][,905:1024]
+heat.iif = features.interictal[[1]][,905:1024]
+kk = rbind(heat.iif,heat.if)
+
+# feature index values (for visualizations)
+ev_ref = 1:16
+
+fev_ref = 17:32
+
+log_ref = 33:784
+
+corr_ref = 485:904
+
+fcorr_ref = 905:1024
+
+energy_ref = 1025:1040
+
+
+ev.if = features.ictal[[1]][,ev_ref]
+ev.iif = features.interictal[[1]][,ev_ref]
+
+fev.if = features.ictal[[1]][,fev_ref]
+fev.iif = features.interictal[[1]][,fev_ref]
+
+log.if = features.ictal[[1]][,log_ref]
+log.iif = features.interictal[[1]][,log_ref]
+
+energy.if = features.ictal[[1]][,energy_ref]
+energy.iif = features.interictal[[1]][,energy_ref]
+
+
+a = apply(heat.if,2,mean)
+
+b = matrix(1,16,16)
+b[lower.tri(b, diag = FALSE)] = a
+b = t(b)
+b[lower.tri(b, diag = FALSE)] = a
+
+
+aa = apply(heat.iif,2,mean)
+bb = matrix(1,16,16)
+bb[lower.tri(bb,diag = FALSE)] = aa
+bb = t(bb)
+bb[lower.tri(bb,diag = FALSE)] = aa
+
+
+
+# Calculate AUC and ROC metrics
+library(AUC)
+roc_curve = list()
+auc_val = list()
+for (i in 1:length(subjects)){
+  roc_curve[[i]] = roc(as.vector(pred.rf[[i]][,2]),factor(dog_labels[[i]]))
+  auc_val[[i]] = auc(roc_curve[[i]],min=0,max=1) 
+}
+
+
+# Dog 1
+pred <- prediction(as.vector(pred.rf[[1]][,2]), factor(dog_labels[[1]]))
+perf <- performance(pred, measure = "tpr", x.measure = "fpr")
+auc <- performance(pred, measure = "auc")
+auc <- auc@y.values[[1]]
+
+# Dog 2
+pred.2 <- prediction(as.vector(pred.rf[[2]][,2]), factor(dog_labels[[2]]))
+perf.2 <- performance(pred.2, measure = "tpr", x.measure = "fpr")
+auc.2 <- performance(pred.2, measure = "auc")
+auc.2 <- auc.2@y.values[[1]]
+
+# Dog 3
+pred.3 <- prediction(as.vector(pred.rf[[3]][,2]), factor(dog_labels[[3]]))
+perf.3 <- performance(pred.3, measure = "tpr", x.measure = "fpr")
+auc.3 <- performance(pred.3, measure = "auc")
+auc.3 <- auc.3@y.values[[1]]
+
+# Dog 4
+pred.4 <- prediction(as.vector(pred.rf[[4]][,2]), factor(dog_labels[[4]]))
+perf.4 <- performance(pred.4, measure = "tpr", x.measure = "fpr")
+auc.4 <- performance(pred.4, measure = "auc")
+auc.4 <- auc.4@y.values[[1]]
+
+# ROC data frames
+roc.data <- data.frame(fpr=unlist(perf@x.values),
+                       tpr=unlist(perf@y.values),
+                       model="GLM")
+
+roc.data.2 <- data.frame(fpr=unlist(perf.2@x.values),
+                       tpr=unlist(perf.2@y.values),
+                       model="GLM")
+
+roc.data.3 <- data.frame(fpr=unlist(perf.3@x.values),
+                         tpr=unlist(perf.3@y.values),
+                         model="GLM")
+
+roc.data.4 <- data.frame(fpr=unlist(perf.4@x.values),
+                         tpr=unlist(perf.4@y.values),
+                         model="GLM")
+
+# Plot ROCs
+ggplot(roc.data,aes(fpr,tpr))+geom_line(aes(color=sprintf("Dog 1 (AUC = %.4f)",auc)))+
+  geom_line(data=roc.data.2,aes(color=sprintf("Dog 2 (AUC = %.4f)",auc.2)))+
+  geom_line(data=roc.data.3,aes(color=sprintf("Dog 3 (AUC = %.4f)",auc.3)))+
+  geom_line(data=roc.data.4,aes(color=sprintf("Dog 4 (AUC = %.4f)",auc.4)))+
+  labs(color="Subject")+
+  ggtitle("ROC Curves")
+
+# example of single ROC
+ggplot(roc.data, aes(x=fpr, ymin=0, ymax=tpr)) +
+  geom_ribbon(alpha=0.2) +
+  geom_line(aes(y=tpr)) +
+  geom_line(aes(y=))
+  ggtitle(paste0("ROC Curve w/ AUC=", auc))
+
+# feature visualizations
+ggplot(data=melt(fev.iif), aes(as.factor(X2), value))+xlab('eigenvalue') + geom_boxplot() + ggtitle("Interictal Eigenvalues")+ ylim(0,15)
+
+ggplot(data=melt(fev.if), aes(as.factor(X2), value))+xlab('eigenvalue') + geom_boxplot() + ggtitle("Ictal Eigenvalues")+ ylim(0,15)
+
+```
+
+
+### Results
+
+Each of the extracted features were important in determining if a given clip was seizure or not a seizure. The time domain features were particularly interesting to examine. Figure 1 shows how a few of these features differ between ictal and interictal clips.
+
+![time features](https://raw.github.com/tyblevins/EPID600_Final-Project/master/pics/time_feats.png)
+
+**Figure 1:** Time Domain Feature Comparison
+
+The differences between ictal and interictal in the frequency domain features was less clear cut. Figure 2 depicts these differences.
+
+![frequency features](https://raw.github.com/tyblevins/EPID600_Final-Project/master/pics/freq_feats.png)
+
+**Figure 2:** Frequency Domain Feature Comparison
+
+The random forest classifier performed very well across the four dogs. However, performance varied from dog to dog.  The classifier performed the best on Dog 1, posting an AUC of 0.9957. This score was closely followed by its performance on Dog 3 where it scored 0.9761 on AUC. Dog 2 and Dog 4 did not perform quite as well, but still had good AUCs of 0.8708 and 0.9251 respectively. Figure 3 depicts the ROC curves for each dog.
+
+![roc curves](https://raw.github.com/tyblevins/EPID600_Final-Project/master/pics/results.png)
+
+**Figure 3:** ROC curves for all data sets
+
+In conclusion, I was able to successfully build a high-performance seizure detection algorithm in R. The performance ranged widely from 0.8708-0.9957 AUC. In order to obtain better results, further studies should try cross validation to optimize the number of trees in the random forest classifier as well as try feature reduction. Additionally, more classifiers should be tried. I also think it would be beneficial to perform this optimization for each patient so that each patient will end up with the best algorithm tailored specifically for them and their specific seizures.
+
+
+
+
+
