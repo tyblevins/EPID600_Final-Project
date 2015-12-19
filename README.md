@@ -14,7 +14,7 @@ EEG from four canine subjects was analyzed. The EEG data is publicly available (
 
 `project-info.txt` details the instructions for the final project in EPID 600.
 
-`Sample.R` contains the raw code for running this analysis on the sample data in 'data'. This project must be your working directory path for the script to execute correctly, but otherwise should be ready to go out-of-the-box.
+`Sample.R` contains the raw code for running this analysis on the sample data in `data`. This project must be your working directory path for the script to execute correctly, but otherwise should be ready to go out-of-the-box.
 
 
 
